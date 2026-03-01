@@ -16,17 +16,19 @@ def get_highlights(
     top_n: int = 5,
     min_duration: float = 5.0,
     max_duration: float = 30.0,
-    audio_weight: float = 0.5,
-    scene_weight: float = 0.2,
-    dynamics_weight: float = 0.3,
+    audio_energy_weight: float = 0.35,
+    audio_onset_weight: float = 0.15,
+    scene_weight: float = 0.15,
+    dynamics_weight: float = 0.2,
+    brightness_weight: float = 0.15,
 ) -> list[dict]:
     """
     Executes the full heuristic funnel pipeline:
-    1. Coarse Filter: Audio Energy + Scene Cut Density
-    2. Fine Verification: OpenCV Frame Dynamics
+    1. Coarse Filter: Audio Energy + Audio Onset + Scene Cut Density
+    2. Fine Verification: OpenCV Frame Dynamics + Brightness Flash
     3. Expansion: Dynamic boundary alignment for continuous shots.
     """
-    logger.info("--- PHASE 1: Audio Energy Analysis ---")
+    logger.info("--- PHASE 1: Audio Energy & Onset Analysis ---")
     audio_results = analyze_audio_energy(temp_audio_path)
 
     if not audio_results:
@@ -43,12 +45,17 @@ def get_highlights(
     merged_coarse = []
 
     for a_res, s_res in zip(audio_results, scene_results):
-        coarse_score = (a_res["score"] * audio_weight) + (s_res["score"] * scene_weight)
+        coarse_score = (
+            (a_res["energy_score"] * audio_energy_weight)
+            + (a_res["onset_score"] * audio_onset_weight)
+            + (s_res["score"] * scene_weight)
+        )
         merged_coarse.append(
             {
                 "start": a_res["start"],
                 "end": a_res["end"],
-                "audio_score": a_res["score"],
+                "energy_score": a_res["energy_score"],
+                "onset_score": a_res["onset_score"],
                 "scene_score": s_res["score"],
                 "coarse_score": coarse_score,
             }
@@ -94,21 +101,33 @@ def get_highlights(
             break
 
     logger.info(
-        f"--- PHASE 2: Fine Verification (Video Dynamics on Top {len(candidates)} candidates) ---"
+        "--- PHASE 2: Fine Verification (Video Dynamics & Brightness "
+        f"Flash on Top {len(candidates)} candidates) ---"
     )
 
     for cand in candidates:
-        dyn_score = analyze_video_dynamics(video_path, cand["start"], cand["end"])
+        dyn_score, brightness_flash = analyze_video_dynamics(video_path, cand["start"], cand["end"])
         cand["raw_dyn_score"] = dyn_score
+        cand["raw_brightness_score"] = brightness_flash
 
     max_dyn = max((c["raw_dyn_score"] for c in candidates), default=0.0)
     if max_dyn == 0:
         max_dyn = 1.0
 
+    max_brightness = max((c["raw_brightness_score"] for c in candidates), default=0.0)
+    if max_brightness == 0:
+        max_brightness = 1.0
+
     for cand in candidates:
         norm_dyn = (cand["raw_dyn_score"] / max_dyn) * 100.0
+        norm_brightness = (cand["raw_brightness_score"] / max_brightness) * 100.0
         cand["dyn_score"] = norm_dyn
-        cand["final_score"] = cand["coarse_score"] + (norm_dyn * dynamics_weight)
+        cand["brightness_score"] = norm_brightness
+        cand["final_score"] = (
+            cand["coarse_score"]
+            + (norm_dyn * dynamics_weight)
+            + (norm_brightness * brightness_weight)
+        )
 
     candidates.sort(key=lambda x: x["final_score"], reverse=True)
     final_candidates = candidates[:top_n]

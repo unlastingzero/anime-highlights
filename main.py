@@ -33,22 +33,34 @@ def main():
         help="Maximum duration of the extracted clip in seconds",
     )
     parser.add_argument(
-        "--weight-audio",
+        "--weight-audio-energy",
         type=float,
-        default=0.5,
+        default=0.35,
         help="Weight for audio energy score (0.0 to 1.0)",
+    )
+    parser.add_argument(
+        "--weight-audio-onset",
+        type=float,
+        default=0.15,
+        help="Weight for audio onset density score (0.0 to 1.0)",
     )
     parser.add_argument(
         "--weight-scene",
         type=float,
-        default=0.2,
+        default=0.15,
         help="Weight for scene cut density score (0.0 to 1.0)",
     )
     parser.add_argument(
         "--weight-dynamics",
         type=float,
-        default=0.3,
+        default=0.20,
         help="Weight for video dynamics score (0.0 to 1.0)",
+    )
+    parser.add_argument(
+        "--weight-brightness",
+        type=float,
+        default=0.15,
+        help="Weight for brightness flash density score (0.0 to 1.0)",
     )
 
     args = parser.parse_args()
@@ -74,9 +86,11 @@ def main():
                 top_n=args.top_n,
                 min_duration=args.min_duration,
                 max_duration=args.max_duration,
-                audio_weight=args.weight_audio,
+                audio_energy_weight=args.weight_audio_energy,
+                audio_onset_weight=args.weight_audio_onset,
                 scene_weight=args.weight_scene,
                 dynamics_weight=args.weight_dynamics,
+                brightness_weight=args.weight_brightness,
             )
 
             # 3. Print the top N segments
