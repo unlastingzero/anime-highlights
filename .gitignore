@@ -1,0 +1,35 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+*.so
+.python-version
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project-specific
+outputs/*
+!outputs/.gitkeep
