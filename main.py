@@ -93,21 +93,54 @@ def main():
                 brightness_weight=args.weight_brightness,
             )
 
-            # 3. Print the top N segments
+            # 3. Print and Save the top N segments
+            report_lines = []
+            header = f"Top {args.top_n} Highlights for: {base_name}"
             print("\n" + "=" * 70)
-            print(f"Top {args.top_n} Highlights for: {base_name}")
+            print(header)
             print("=" * 70)
+            report_lines.append("=" * 70)
+            report_lines.append(header)
+            report_lines.append("=" * 70)
 
             for i, res in enumerate(results, 1):
                 start_sec = res["start"]
                 end_sec = res["end"]
 
-                print(
-                    f"[{i:02d}] Start: {start_sec:06.2f}s | "
-                    f"End: {end_sec:06.2f}s (Duration: {end_sec - start_sec:.2f}s)"
+                summary = (
+                    f"[{i:02d}] Time: {start_sec:06.2f}s - {end_sec:06.2f}s "
+                    f"(Duration: {end_sec - start_sec:.2f}s)"
                 )
-                print(f"     Score: {res['final_score']:05.2f}/100")
+                score_line = f"     Final Score: {res['final_score']:05.2f}/100"
+
+                print(summary)
+                print(score_line)
+                report_lines.append(summary)
+                report_lines.append(score_line)
+
+                # Show breakdown if available
+                if "audio_score" in res:
+                    line = f"     - Audio Impact: {res['audio_score']:05.2f}"
+                    print(line)
+                    report_lines.append(line)
+                if "video_score" in res:
+                    line = f"     - Video Dynamics: {res['video_score']:05.2f}"
+                    print(line)
+                    report_lines.append(line)
+
+                # Video metrics breakdown
+                if "video_metrics" in res:
+                    vm = res["video_metrics"]
+                    details = (
+                        f"     - Details: Sakuga Ratio: {vm['effective_fps']:.1f}% | "
+                        f"Impacts: {vm['impact_score']:.1f} | "
+                        f"Peak Spacing: {vm['max_diff']:.1f}"
+                    )
+                    print(details)
+                    report_lines.append(details)
+
                 print("-" * 70)
+                report_lines.append("-" * 70)
 
                 # Format timestamps for filenames (e.g. 120s to 135s -> 120_135)
                 time_suffix = f"{int(start_sec)}_{int(end_sec)}"
@@ -127,6 +160,12 @@ def main():
                         args.out_dir, f"{base_name}_highlight_{i:02d}_{file_suffix}.gif"
                     )
                     export_gif(args.video_path, start_sec, end_sec, out_path)
+
+            # 5. Write the report file
+            report_path = os.path.join(args.out_dir, f"{base_name}_highlights_report.txt")
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(report_lines))
+            logger.info(f"Detailed analysis report saved to: {report_path}")
 
         except Exception as e:
             logger.error(f"An error occurred during analysis: {e}")

@@ -4,32 +4,34 @@ import numpy as np
 from utils.logger import logger
 
 
-def analyze_video_dynamics(
-    video_path: str, start_time: float, end_time: float
-) -> tuple[float, float]:
+def analyze_video_dynamics(video_path: str, start_time: float, end_time: float) -> dict:
     """
-    Calculates the average frame difference and brightness flash density for a specific time window.
-    High frame difference indicates fast motion / heavy action.
-    High brightness flash indicates "Impact Frames" or extreme visual effects.
-    This is computationally expensive, so it should only be run on short candidate segments.
+    Calculates advanced dynamics for Anime:
+    - avg_diff: General motion intensity.
+    - max_diff: Peak action intensity (Spacing).
+    - effective_fps: Ratio of frames with significant motion (Sakuga/Ones vs Threes).
+    - impact_score: Detects sudden visual spikes (Impact Frames).
     """
     logger.info(
-        f"Analyzing dynamics and brightness for {video_path} "
+        f"Analyzing anime dynamics for {video_path} "
         f"from {start_time:.2f}s to {end_time:.2f}s..."
     )
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         logger.error(f"Could not open video {video_path}")
-        return 0.0, 0.0
+        return {"avg_diff": 0.0, "max_diff": 0.0, "effective_fps": 0.0, "impact_score": 0.0}
 
-    # Seek to start time (in milliseconds)
+    # Seek to start time
     cap.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000.0)
 
     prev_frame = None
-    total_diff = 0.0
-    frame_count = 0
+    diffs = []
     brightness_list = []
+
+    # Threshold for "significant change" to count towards effective FPS
+    # This is a heuristic value for pixel-wise mean difference (0-255)
+    MOTION_THRESHOLD = 2.0
 
     while cap.isOpened():
         current_msec = cap.get(cv2.CAP_PROP_POS_MSEC)
@@ -40,32 +42,56 @@ def analyze_video_dynamics(
         if not ret:
             break
 
-        # Convert to grayscale to speed up difference calculation
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        # Calculate mean brightness of the frame
         mean_brightness = gray.mean()
         brightness_list.append(mean_brightness)
 
         if prev_frame is not None:
-            # Calculate absolute difference between current and previous frame
             diff = cv2.absdiff(gray, prev_frame)
-            # Mean pixel difference
-            mean_diff = diff.mean()
-            total_diff += mean_diff
-            frame_count += 1
+            mean_diff = float(diff.mean())
+            diffs.append(mean_diff)
 
         prev_frame = gray
 
     cap.release()
 
-    if frame_count == 0:
-        return 0.0, 0.0
+    if not diffs:
+        return {"avg_diff": 0.0, "max_diff": 0.0, "effective_fps": 0.0, "impact_score": 0.0}
 
-    avg_diff = total_diff / frame_count
+    avg_diff = np.mean(diffs)
+    max_diff = np.max(diffs)
 
-    # Calculate brightness flash density using standard deviation of brightness
-    brightness_flash = float(np.std(brightness_list)) if len(brightness_list) > 1 else 0.0
+    # Effective FPS: How many frames are actually "moving" (Ones vs Threes logic)
+    significant_frames = sum(1 for d in diffs if d > MOTION_THRESHOLD)
+    effective_fps_ratio = significant_frames / len(diffs)
 
-    logger.debug(f"Dynamics score: {avg_diff:.2f}, Brightness flash: {brightness_flash:.2f}")
-    return avg_diff, brightness_flash
+    # Impact Frame Detection: Sudden spikes in frame difference
+    # An impact frame usually has a much higher difference than its neighbors
+    impact_count = 0
+    if len(diffs) > 3:
+        for i in range(1, len(diffs) - 1):
+            # If current diff is 2.5x the average of neighbors, it's a spike
+            neighbor_avg = (diffs[i - 1] + diffs[i + 1]) / 2.0
+            if diffs[i] > neighbor_avg * 2.5 and diffs[i] > 5.0:
+                impact_count += 1
+
+    # Also check brightness spikes (flashes)
+    brightness_spikes = 0
+    if len(brightness_list) > 3:
+        for i in range(1, len(brightness_list) - 1):
+            b_diff = abs(brightness_list[i] - brightness_list[i - 1])
+            if b_diff > 30:  # Significant brightness jump (0-255 scale)
+                brightness_spikes += 1
+
+    results = {
+        "avg_diff": float(avg_diff),
+        "max_diff": float(max_diff),
+        "effective_fps": float(effective_fps_ratio * 100.0),  # Normalize to 0-100
+        "impact_score": float((impact_count + brightness_spikes) * 10.0),  # Heuristic scaling
+    }
+
+    logger.debug(
+        f"Dynamics: Avg={avg_diff:.2f}, Max={max_diff:.2f}, "
+        f"EffFPS={results['effective_fps']:.1f}%, Impact={results['impact_score']:.1f}"
+    )
+    return results

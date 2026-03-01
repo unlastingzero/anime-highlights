@@ -45,17 +45,26 @@ def get_highlights(
     merged_coarse = []
 
     for a_res, s_res in zip(audio_results, scene_results):
-        coarse_score = (
-            (a_res["energy_score"] * audio_energy_weight)
-            + (a_res["onset_score"] * audio_onset_weight)
-            + (s_res["score"] * scene_weight)
+        # Weighted Audio Score:
+        # We prioritize Percussive (impacts) and Noise (explosions) over raw Energy.
+        audio_composite = (
+            (a_res["percussive_score"] * 0.4)
+            + (a_res["noise_score"] * 0.2)
+            + (a_res["energy_score"] * 0.2)
+            + (a_res["onset_score"] * 0.1)
+            + (a_res["brightness_score"] * 0.1)
         )
+
+        # Merge with Scene Cut Density
+        coarse_score = (audio_composite * (audio_energy_weight + audio_onset_weight)) + (
+            s_res["score"] * scene_weight
+        )
+
         merged_coarse.append(
             {
                 "start": a_res["start"],
                 "end": a_res["end"],
-                "energy_score": a_res["energy_score"],
-                "onset_score": a_res["onset_score"],
+                "audio_score": audio_composite,
                 "scene_score": s_res["score"],
                 "coarse_score": coarse_score,
             }
@@ -100,34 +109,37 @@ def get_highlights(
         if len(candidates) >= top_n * 2:
             break
 
-    logger.info(
-        "--- PHASE 2: Fine Verification (Video Dynamics & Brightness "
-        f"Flash on Top {len(candidates)} candidates) ---"
-    )
+    msg = f"--- PHASE 2: Fine Verification ({len(candidates)} candidates) ---"
+    logger.info(msg)
 
     for cand in candidates:
-        dyn_score, brightness_flash = analyze_video_dynamics(video_path, cand["start"], cand["end"])
-        cand["raw_dyn_score"] = dyn_score
-        cand["raw_brightness_score"] = brightness_flash
+        v_res = analyze_video_dynamics(video_path, cand["start"], cand["end"])
+        cand["video_metrics"] = v_res
 
-    max_dyn = max((c["raw_dyn_score"] for c in candidates), default=0.0)
-    if max_dyn == 0:
-        max_dyn = 1.0
-
-    max_brightness = max((c["raw_brightness_score"] for c in candidates), default=0.0)
-    if max_brightness == 0:
-        max_brightness = 1.0
+    # Normalize metrics across candidates
+    metrics_to_normalize = ["avg_diff", "max_diff", "effective_fps", "impact_score"]
+    max_vals = {}
+    for m in metrics_to_normalize:
+        max_val = max((c["video_metrics"][m] for c in candidates), default=0.0)
+        max_vals[m] = max_val if max_val > 0 else 1.0
 
     for cand in candidates:
-        norm_dyn = (cand["raw_dyn_score"] / max_dyn) * 100.0
-        norm_brightness = (cand["raw_brightness_score"] / max_brightness) * 100.0
-        cand["dyn_score"] = norm_dyn
-        cand["brightness_score"] = norm_brightness
-        cand["final_score"] = (
-            cand["coarse_score"]
-            + (norm_dyn * dynamics_weight)
-            + (norm_brightness * brightness_weight)
-        )
+        v = cand["video_metrics"]
+        # Normalize each sub-metric to 0-100
+        norm_avg = (v["avg_diff"] / max_vals["avg_diff"]) * 100.0
+        norm_max = (v["max_diff"] / max_vals["max_diff"]) * 100.0
+        norm_fps = (v["effective_fps"] / max_vals["effective_fps"]) * 100.0
+        norm_impact = (v["impact_score"] / max_vals["impact_score"]) * 100.0
+
+        # Composite video dynamics score (Weighted)
+        # We give more weight to effective_fps (Sakuga) and impact_score
+        video_score = (norm_avg * 0.2) + (norm_max * 0.2) + (norm_fps * 0.4) + (norm_impact * 0.2)
+
+        cand["video_score"] = video_score
+        # Combine coarse score with the new refined video score
+        # Using the sum of previous dynamics_weight and brightness_weight for the combined video_score # noqa: E501
+        video_weight_total = dynamics_weight + brightness_weight
+        cand["final_score"] = cand["coarse_score"] + (video_score * video_weight_total)
 
     candidates.sort(key=lambda x: x["final_score"], reverse=True)
     final_candidates = candidates[:top_n]

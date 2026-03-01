@@ -33,3 +33,4 @@ Icon?
 # Project-specific
 outputs/*
 !outputs/.gitkeep
+test/
