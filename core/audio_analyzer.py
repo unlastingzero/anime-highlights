@@ -1,4 +1,3 @@
-import librosa
 import numpy as np
 
 from utils.logger import logger
@@ -15,6 +14,8 @@ def analyze_audio_energy(
     - brightness_score (Spectral Centroid): High-frequency intensity (clashes, beams).
     - noise_score (Spectral Flatness): Detection of "explosive" white-noise like sounds.
     """
+    import librosa
+
     logger.info(f"Analyzing advanced audio features from {audio_path}...")
 
     y, sr = librosa.load(audio_path, sr=None)

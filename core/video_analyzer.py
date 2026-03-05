@@ -1,4 +1,3 @@
-import cv2
 import numpy as np
 
 from utils.logger import logger
@@ -12,6 +11,8 @@ def analyze_video_dynamics(video_path: str, start_time: float, end_time: float) 
     - effective_fps: Ratio of frames with significant motion (Sakuga/Ones vs Threes).
     - impact_score: Detects sudden visual spikes (Impact Frames).
     """
+    import cv2
+
     logger.info(
         f"Analyzing anime dynamics for {video_path} "
         f"from {start_time:.2f}s to {end_time:.2f}s..."

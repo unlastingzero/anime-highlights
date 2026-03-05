@@ -2,8 +2,6 @@ import argparse
 import os
 import tempfile
 
-from core.scorer import get_highlights
-from utils.ffmpeg_helper import export_gif, export_video, extract_audio
 from utils.logger import logger
 
 
@@ -64,6 +62,11 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Lazy load heavy dependencies only AFTER arguments are validated
+    from core.scorer import get_highlights
+    from utils.ffmpeg_helper import export_gif, export_video, extract_audio
+
     if not os.path.exists(args.video_path):
         logger.error(f"Input video file not found: {args.video_path}")
         return

@@ -1,12 +1,3 @@
-import librosa
-
-from core.audio_analyzer import analyze_audio_energy
-from core.scene_detector import (
-    align_and_expand_boundaries,
-    detect_scene_changes,
-    get_scene_density_scores,
-)
-from core.video_analyzer import analyze_video_dynamics
 from utils.logger import logger
 
 
@@ -28,6 +19,16 @@ def get_highlights(
     2. Fine Verification: OpenCV Frame Dynamics + Brightness Flash
     3. Expansion: Dynamic boundary alignment for continuous shots.
     """
+    import librosa
+
+    from core.audio_analyzer import analyze_audio_energy
+    from core.scene_detector import (
+        align_and_expand_boundaries,
+        detect_scene_changes,
+        get_scene_density_scores,
+    )
+    from core.video_analyzer import analyze_video_dynamics
+
     logger.info("--- PHASE 1: Audio Energy & Onset Analysis ---")
     audio_results = analyze_audio_energy(temp_audio_path)
 
